@@ -71,15 +71,18 @@ function get_missing_blocks($block_count, $last_local_block)
             ));
             $header_response = curl_exec($curl); // Send the request, save the response
             curl_close($curl); // Close request
-            // echo $header_response;
+            echo $header_response;
 
             // convert header response to binary
-            $number_input = str_replace('"', '', $header_response);
-            $fromBaseInput = '0123456789ABCDEF';
-            $toBaseInput = '01';
-            $binary_header = convBase($number_input, $fromBaseInput, $toBaseInput);
-       
+            $hex_input = str_replace('"', '', $header_response);
+            $header_data = hex2ByteArray($hex_input);
+            //print_r($header_data);
             // validatae data
+            echo(gettype($header_data));
+            $object_header = implode(" ",$header_data);
+            $object = pack('C*', ...$header_data);
+            // $object = json_decode (json_encode ($header_data), FALSE);
+            // $object = (object) $header_data;
             if (!is_array($data_response_array) ) 
             {
                 exit();
@@ -88,43 +91,19 @@ function get_missing_blocks($block_count, $last_local_block)
             {
                 // save block number locally then save
                 file_put_contents('blocks.txt', $block_height);
-                save_to_arweave($block_height, $block_hash, $previous_block, $block_time, $binary_header);
+                save_to_arweave($block_height, $block_hash, $previous_block, $block_time, $object);
             }   
         } 
     }
 }
 // function to convert numbers to any base    
-function convBase($numberInput, $fromBaseInput, $toBaseInput)
+function hex2ByteArray($hex_input) 
 {
-    if ($fromBaseInput==$toBaseInput) return $numberInput;
-    $fromBase = str_split($fromBaseInput,1);
-    $toBase = str_split($toBaseInput,1);
-    $number = str_split($numberInput,1);
-    $fromLen=strlen($fromBaseInput);
-    $toLen=strlen($toBaseInput);
-    $numberLen=strlen($numberInput);
-    $retval='';
-    if ($toBaseInput == '0123456789')
-    {
-        $retval=0;
-        for ($i = 1;$i <= $numberLen; $i++)
-            $retval = bcadd($retval, bcmul(array_search($number[$i-1], $fromBase),bcpow($fromLen,$numberLen-$i)));
-        return $retval;
-    }
-    if ($fromBaseInput != '0123456789')
-        $base10=convBase($numberInput, $fromBaseInput, '0123456789');
-    else
-        $base10 = $numberInput;
-    if ($base10<strlen($toBaseInput))
-        return $toBase[$base10];
-    while($base10 != '0')
-    {
-        $retval = $toBase[bcmod($base10,$toLen)].$retval;
-        $base10 = bcdiv($base10,$toLen,0);
-    }
-    return $retval;
+    $string = hex2bin($hex_input);
+    return unpack('C*', $string);
 }
-    function save_to_arweave($block_height, $block_hash, $previous_block, $block_time, $binary_header)
+
+    function save_to_arweave($block_height, $block_hash, $previous_block, $block_time, $object)
     {
         // Creating a Arweave object, this is the primary SDK class,
         // It contains the public methods for creating, sending and getting transactions
@@ -138,7 +117,7 @@ function convBase($numberInput, $fromBaseInput, $toBaseInput)
     
         // Create a new ARWEAVE transaction to store the verified data
         $transaction = $arweave->createTransaction($wallet, [
-            'data' => $binary_header,
+            'data' => $object,
             'tags' => [
                // 'App-Name'      =>  'Record The BCH Blockchain',
                 'Symbol'        =>  'BCH',
