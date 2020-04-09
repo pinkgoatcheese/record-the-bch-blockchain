@@ -1,6 +1,6 @@
 <?php
 
-// script requires curl and bcmath
+// script requires php7.2, curl,  bcmath
 
 // loading arweave 
 include __DIR__ . '/vendor/autoload.php';
@@ -11,12 +11,12 @@ use \Arweave\SDK\Support\Wallet;
 $last_local_block = file_get_contents('blocks.txt');
 
 // get block count from bitcoin.com
-get_block_count($last_local_block);
+get_block_count(trim($last_local_block));
 
 function get_block_count($last_local_block)
 {
     $block_count_url = "https://rest.bitcoin.com/v2/blockchain/getBlockCount";
-    $curl = curl_init(); 
+    $curl = curl_init();
     curl_setopt_array($curl, array(
     CURLOPT_URL => $block_count_url,            // set the request URL
     CURLOPT_HTTPHEADER => array("Content-Type:application/json"),     // set the headers
@@ -24,28 +24,28 @@ function get_block_count($last_local_block)
     ));
     $block_count = curl_exec($curl); // Send the request, save the response
     curl_close($curl); // Close request
+    // echo($block_count);
     get_missing_blocks($block_count, $last_local_block);
 }
 
 // Retrieve missing block information to save if needed
 function get_missing_blocks($block_count, $last_local_block)
 {
-    if ($block_count == $last_local_block) 
+    if ($block_count == $last_local_block)
     {
+        echo("BCH Block Height = to last local block");
         exit();
-    } 
-    elseif ($block_count > $last_local_block) 
+    }
+    elseif ($block_count > $last_local_block)
     {
         foreach (range($last_local_block, $block_count) as $block_number) {
             // increment local block number by one
             $last_local_block++;
             // output block number to log file
             print_r($last_local_block);
-            // new line
-            printf("\n");
             $url = "https://rest.bitcoin.com/v2/block/detailsByHeight/" . $last_local_block . "?verbose=true";
-
-            $curl = curl_init(); 
+            echo($url);
+            $curl = curl_init();
             curl_setopt_array($curl, array(
             CURLOPT_URL => $url,            // set the request URL
             CURLOPT_HTTPHEADER => array('Content-Type:application/json'),     // set the headers
@@ -59,85 +59,84 @@ function get_missing_blocks($block_count, $last_local_block)
             $block_hash = $data_response_array['hash'];
             $previous_block = $data_response_array['previousblockhash'];
             $block_time = $data_response_array['time'];
-            //print_r($block_height);
 
             // Get Block Header to Save
             $header_url = "https://rest.bitcoin.com/v2/blockchain/getBlockHeader/" . $block_hash . "?verbose=false";
-            $curl = curl_init(); 
+            // echo($header_url);
+            $curl = curl_init();
             curl_setopt_array($curl, array(
             CURLOPT_URL => $header_url,            // set the request URL
-            CURLOPT_HTTPHEADER => array('Content-Type:application/json'),     // set the headers
+            // CURLOPT_HTTPHEADER => array('Content-Type:application/json'),     // set the headers
             CURLOPT_RETURNTRANSFER => true,         // ask for raw response instead of bool
             ));
             $header_response = curl_exec($curl); // Send the request, save the response
             curl_close($curl); // Close request
-            echo $header_response;
+            echo($header_response);
 
             // convert header response to binary
             $hex_input = str_replace('"', '', $header_response);
-            $header_data = hex2ByteArray($hex_input);
+            gettype($header_response);
+            $header_data_array = hex2ByteArray($hex_input);
             //print_r($header_data);
             // validatae data
-            echo(gettype($header_data));
-            $object_header = implode(" ",$header_data);
-            $object = pack('C*', ...$header_data);
-            // $object = json_decode (json_encode ($header_data), FALSE);
-            // $object = (object) $header_data;
-            if (!is_array($data_response_array) ) 
+            $binary_header = pack('C*', ...$header_data_array);
+
+            if (!is_array($data_response_array))
             {
+                echo('Data Response is not an array');
                 exit();
-            } 
-            else 
+            }
+            elseif (!isset($block_height))
             {
+               echo('Empty Variable for block_height exiting');
+               exit();
+            } else {
                 // save block number locally then save
                 file_put_contents('blocks.txt', $block_height);
-                save_to_arweave($block_height, $block_hash, $previous_block, $block_time, $object);
-            }   
-        } 
+                save_to_arweave($block_height, $block_hash, $previous_block, $block_time, $binary_header);
+            }
+        }
     }
 }
-// function to convert numbers to any base    
-function hex2ByteArray($hex_input) 
+
+function hex2ByteArray($hex_input)
 {
     $string = hex2bin($hex_input);
     return unpack('C*', $string);
 }
 
-    function save_to_arweave($block_height, $block_hash, $previous_block, $block_time, $object)
-    {
-        // Creating a Arweave object, this is the primary SDK class,
-        // It contains the public methods for creating, sending and getting transactions
-        $arweave = new \Arweave\SDK\Arweave('https', 'arweave.net', '443');
+function save_to_arweave($block_height, $block_hash, $previous_block, $block_time, $object)
+{
+    // Creating a Arweave object, this is the primary SDK class,
+    // It contains the public methods for creating, sending and getting transactions
+    $arweave = new \Arweave\SDK\Arweave('https', 'arweave.net', '443');
     
-        // Decode our JWK file to a PHP array named $jwk
-        $jwk = json_decode(file_get_contents('jwk.json'), true);
+    // Decode our JWK file to a PHP array named $jwk
+    $jwk = json_decode(file_get_contents('jwk.json'), true);
     
-        // Create a new wallet using the $jwk array
-        $wallet =  new \Arweave\SDK\Support\Wallet($jwk);
+    // Create a new wallet using the $jwk array
+    $wallet =  new \Arweave\SDK\Support\Wallet($jwk);
     
-        // Create a new ARWEAVE transaction to store the verified data
-        $transaction = $arweave->createTransaction($wallet, [
-            'data' => $object,
-            'tags' => [
-               // 'App-Name'      =>  'Record The BCH Blockchain',
-                'Symbol'        =>  'BCH',
-                'Source'        =>  'bitcoin.com',
-                'Height'        =>  $block_height,
-                'Hash'          =>  $block_hash,
-                'Previous'      =>  $previous_block,
-                'Block-Data'    =>  'H',
-                'Block-Time'    =>  $block_time,
+    // Create a new ARWEAVE transaction to store the verified data
+    $transaction = $arweave->createTransaction($wallet, [
+        'data' => $object,
+        'tags' => [
+            'Symbol'        =>  'BCH',
+            'Source'        =>  'bitcoin.com',
+            'Height'        =>  $block_height,
+            'Hash'          =>  $block_hash,
+            'Previous'      =>  $previous_block,
+            'Block-Data'    =>  'H',
+            'Block-Time'    =>  $block_time,
             ]
         ]);
-        
-        
-        // Outputs the transaction id which is stored in the logfile via cron
-        printf ('%s', $transaction->getAttribute('id'));
+       
+    // Outputs the transaction id which is stored in the logfile via cron
+    printf ('%s', $transaction->getAttribute('id'));
     
-        // 1 transaction id per line
-        printf("\n");
+    // 1 transaction id per line
+    printf("\n");
     
-        // Send the transaction to the arweave network
-        // $arweave->commit($transaction);
-        $arweave->api()->commit($transaction);
-    }
+    // Send the transaction to the arweave network
+    $arweave->api()->commit($transaction);
+}
