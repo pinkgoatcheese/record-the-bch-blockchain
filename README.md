@@ -14,3 +14,8 @@ crontab -e
 create blocks.txt in the record-the-bch-blockchain folder and enter the starting height to start at 0 enter 0 in blocks.txt
 
 
+# Data Location
+
+All data is saved here 
+
+https://viewblock.io/arweave/address/jN91f8NkkiP4X9isB00wkri_-M86Iv-1oK6gLyC4EVk
